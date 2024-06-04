@@ -1,3 +1,4 @@
+import re
 import argparse
 import time
 import msgpack
@@ -5,7 +6,8 @@ from enum import Enum, auto
 
 import numpy as np
 
-from planning_utils import a_star, heuristic, create_grid
+from planning_utils import *
+
 from udacidrone import Drone
 from udacidrone.connection import MavlinkConnection
 from udacidrone.messaging import MsgID
@@ -31,6 +33,11 @@ class MotionPlanning(Drone):
         self.waypoints = []
         self.in_mission = True
         self.check_state = {}
+        self.north_offset = 0
+        self.east_offset = 0
+        self.data = None
+        self.grid = None
+        self.edges = None
 
         # initial state
         self.flight_state = States.MANUAL
@@ -44,6 +51,7 @@ class MotionPlanning(Drone):
         if self.flight_state == States.TAKEOFF:
             if -1.0 * self.local_position[2] > 0.95 * self.target_position[2]:
                 self.waypoint_transition()
+
         elif self.flight_state == States.WAYPOINT:
             if np.linalg.norm(self.target_position[0:2] - self.local_position[0:2]) < 1.0:
                 if len(self.waypoints) > 0:
@@ -111,48 +119,83 @@ class MotionPlanning(Drone):
         data = msgpack.dumps(self.waypoints)
         self.connection._master.write(data)
 
+    def myplan0(self, start, goal):
+        G = nx.Graph()
+        for e in self.edges:
+            p1 = e[0]
+            p2 = e[1]
+            dist = LA.norm(np.array(p2) - np.array(p1))
+            G.add_edge(p1, p2, weight=dist)
+
+        skel_start = closest_point(G, start)
+        skel_goal  = closest_point(G, goal)
+
+        path, cost = a_star_graph(G, heuristic, skel_start, skel_goal)
+        #return path
+
+        return prune_path_graph(path, self.grid)
+
     def plan_path(self):
         self.flight_state = States.PLANNING
-        print("Searching for a path ...")
-        TARGET_ALTITUDE = 5
+        TARGET_ALTITUDE = 15
         SAFETY_DISTANCE = 5
 
         self.target_position[2] = TARGET_ALTITUDE
 
-        # TODO: read lat0, lon0 from colliders into floating point values
-        
-        # TODO: set home position to (lon0, lat0, 0)
+        # DONE: read lat0, lon0 from colliders into floating point values
+        pattern = 'lat0 (-?\d+\.\d+), lon0 (-?\d+\.\d+)'
+        with open('colliders.csv', 'r') as f:
+            firstline = f.readline()
+        match = re.search(pattern, firstline)
+        lat0 = float(match[1])
+        lon0 = float(match[2])
 
-        # TODO: retrieve current global position
- 
-        # TODO: convert to current local position using global_to_local()
-        
-        print('global home {0}, position {1}, local position {2}'.format(self.global_home, self.global_position,
+        # DONE: set home position to (lon0, lat0, 0)
+        self.set_home_position(lon0, lat0, 0)
+
+        # DONE: retrieve current global position
+        # DONE: convert to current local position using global_to_local()
+        current_position = global_to_local(self.global_position, self.global_home)
+
+        #print('current position {}, local position {}'.format(current_position, self.local_position))
+
+        print('global home {0}\nglobal position {1}\nlocal position {2}'.format(self.global_home, self.global_position,
                                                                          self.local_position))
         # Read in obstacle map
-        data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
-        
-        # Define a grid for a particular altitude and safety margin around obstacles
-        grid, north_offset, east_offset = create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
-        print("North offset = {0}, east offset = {1}".format(north_offset, east_offset))
-        # Define starting point on the grid (this is just grid center)
-        grid_start = (-north_offset, -east_offset)
-        # TODO: convert start position to current position rather than map center
-        
-        # Set goal as some arbitrary position on the grid
-        grid_goal = (-north_offset + 10, -east_offset + 10)
-        # TODO: adapt to set goal as latitude / longitude position and convert
+        self.data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
 
-        # Run A* to find a path from start to goal
-        # TODO: add diagonal motions with a cost of sqrt(2) to your A* implementation
-        # or move to a different search space such as a graph (not done here)
-        print('Local Start and Goal: ', grid_start, grid_goal)
-        path, _ = a_star(grid, heuristic, grid_start, grid_goal)
-        # TODO: prune path to minimize number of waypoints
-        # TODO (if you're feeling ambitious): Try a different approach altogether!
+        # Define a grid for a particular altitude and safety margin around obstacles
+        self.grid, self.edges, self.north_offset, self.east_offset = create_grid_and_edges(self.data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+        print("North offset = {0}, east offset = {1}".format(self.north_offset, self.east_offset))
+
+        start = (int(current_position[0]), int(current_position[1]))
+        goal = (0, 0)
+        maxn, maxe = self.grid.shape
+        #maxn, maxe = (10, 10)
+        while True:
+            n = np.random.randint(maxn) 
+            e = np.random.randint(maxe) 
+            if self.grid[n, e] == False:
+                goal = (n + self.north_offset, e + self.east_offset) 
+                break
+
+        grid_start = (start[0] - self.north_offset, start[1] - self.east_offset) 
+        grid_goal  = (goal[0]  - self.north_offset, goal[1]  - self.east_offset) 
+
+        print('Local Start and Goal: ', start, goal)
+        print('grid Start and Goal: ', grid_start, grid_goal)
+
+
+        print("Searching for a path ...")
+        path = self.myplan0(grid_start, grid_goal)
+        path.append(grid_goal)
+
+        print(len(path), path)
+
 
         # Convert path to waypoints
-        waypoints = [[p[0] + north_offset, p[1] + east_offset, TARGET_ALTITUDE, 0] for p in path]
+        waypoints = [[int(p[0]) + self.north_offset, int(p[1]) + self.east_offset, TARGET_ALTITUDE, 0] for p in path]
+
         # Set self.waypoints
         self.waypoints = waypoints
         # TODO: send waypoints to sim (this is just for visualization of waypoints)
