@@ -53,7 +53,11 @@ class MotionPlanning(Drone):
                 self.waypoint_transition()
 
         elif self.flight_state == States.WAYPOINT:
-            if np.linalg.norm(self.target_position[0:2] - self.local_position[0:2]) < 1.0:
+            deadband = 10.0
+            if len(self.waypoints) == 0:
+                deadband = 0.1
+
+            if np.linalg.norm(self.target_position[0:2] - self.local_position[0:2]) < deadband:
                 if len(self.waypoints) > 0:
                     self.waypoint_transition()
                 else:
