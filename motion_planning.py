@@ -6,6 +6,7 @@ from enum import Enum, auto
 
 import numpy as np
 
+from sampling import Sampler
 from planning_utils import *
 
 from udacidrone import Drone
@@ -139,6 +140,62 @@ class MotionPlanning(Drone):
 
         return prune_path_graph(path, self.grid)
 
+    def myplan1(self, start, goal):
+        sampler = Sampler(self.data)
+        print("here1")
+        polygons = sampler._polygons
+        print("here2")
+        nodes = sampler.sample(300)
+        print("here3")
+
+        graph = create_graph(nodes, 5, polygons)
+        start = list(graph.nodes)[0]
+        k = np.random.randint(len(graph.nodes))
+        print(k, len(graph.nodes))
+        goal = list(graph.nodes)[k]
+
+        # Run A* to find a path from start to goal
+        print('Local Start and Goal: ', start, goal)
+        path, _ = a_star_graph(graph, heuristic, start, goal)
+        path.append(goal)
+
+        return path
+
+    def myplan2(self, start, goal):
+        path, _ = a_star_grid(self.grid, heuristic, start, goal)
+        return prune_path(path)
+
+    def myplan3(self, start, goal):
+        path =  [(316, 445), (316, 446), (317, 446), (317, 447), (318, 447), (318, 448), (319, 448), (319, 449), (320, 449), (320, 450), (321, 450), (321, 451), (322, 451), (322, 452), (323, 452), (323, 453), (324, 453), (324, 454), (325, 454), (325, 455), (326, 455)]
+        return path
+
+    def myplan4(self, start, goal):
+        print("generating rrt")
+        num_vertices = 300
+        dt = 1
+        rrt = generate_RRT(self.grid, start, num_vertices, dt)
+        path, _ = a_star_graph(rrt, heuristic, start, goal)
+        return prune_path(path)
+
+    def myplan5(self, start, goal):
+        sampler = Sampler(self.data)
+        print("here1")
+        polygons = sampler._polygons
+        print("here2")
+        nodes = sampler.sample(300)
+        print("here3")
+
+        graph = create_graph(nodes, 5, polygons)
+        start = list(graph.nodes)[0]
+        k = np.random.randint(len(graph.nodes))
+        print(k, len(graph.nodes))
+        goal = list(graph.nodes)[k]
+
+        # Run A* to find a path from start to goal
+        print('Local Start and Goal: ', start, goal)
+        path, _ = a_star_graph(graph, heuristic, start, goal)
+        path.append(goal)
+
     def plan_path(self):
         self.flight_state = States.PLANNING
         TARGET_ALTITUDE = 15
@@ -161,10 +218,9 @@ class MotionPlanning(Drone):
         # DONE: convert to current local position using global_to_local()
         current_position = global_to_local(self.global_position, self.global_home)
 
-        #print('current position {}, local position {}'.format(current_position, self.local_position))
-
-        print('global home {0}\nglobal position {1}\nlocal position {2}'.format(self.global_home, self.global_position,
+        print('\tGlobal home {0}\n\tGlobal position {1}\n\tlocal position {2}'.format(self.global_home, self.global_position,
                                                                          self.local_position))
+        print('Loading obstacle map grid ... ')
         # Read in obstacle map
         self.data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
 
@@ -175,10 +231,9 @@ class MotionPlanning(Drone):
         start = (int(current_position[0]), int(current_position[1]))
         goal = (0, 0)
         maxn, maxe = self.grid.shape
-        #maxn, maxe = (10, 10)
         while True:
-            n = np.random.randint(maxn) 
-            e = np.random.randint(maxe) 
+            n = np.random.randint(maxn)
+            e = np.random.randint(maxe)
             if self.grid[n, e] == False:
                 goal = (n + self.north_offset, e + self.east_offset) 
                 break
@@ -192,8 +247,12 @@ class MotionPlanning(Drone):
 
         print("Searching for a path ...")
         path = self.myplan0(grid_start, grid_goal)
+        #path = self.myplan1(grid_start, grid_goal)
+        #path = self.myplan2(grid_start, grid_goal)
+        #path = self.myplan3(grid_start, grid_goal)
+        #path = self.myplan4(grid_start, grid_goal)
+        #path = self.myplan5(grid_start, grid_goal)
         path.append(grid_goal)
-
         print(len(path), path)
 
 
