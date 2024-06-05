@@ -5,6 +5,7 @@ import msgpack
 from enum import Enum, auto
 
 import numpy as np
+import numpy.linalg as LA
 
 from sampling import Sampler
 from planning_utils import *
@@ -14,6 +15,8 @@ from udacidrone.connection import MavlinkConnection
 from udacidrone.messaging import MsgID
 from udacidrone.frame_utils import global_to_local
 
+import matplotlib.pyplot as plt
+import multiprocessing as mp
 
 class States(Enum):
     MANUAL = auto()
@@ -24,6 +27,85 @@ class States(Enum):
     DISARMING = auto()
     PLANNING = auto()
 
+def gridisplay_addpath(points=None, lines=None):
+    print("\tUpdate grid")
+    if lines:
+        print("\t\tadd edges")
+        for (n1, n2) in lines:
+            plt.plot([n1[1], n2[1]], [n1[0], n2[0]], 'black')
+
+    if points:
+        print("\t\tadd points")
+        for p in points:
+            plt.scatter(p[1], p[0], marker='*', c='red')
+
+    plt.draw()
+    plt.pause(0.1)
+
+def gridisplay_init(grid, start, goal):
+    plt.imshow(grid, cmap='Greys', origin='lower')
+    plt.scatter(start[1], start[0], marker='p', c='blue')
+    plt.scatter(goal[1], goal[0], marker='X', c='blue')
+
+    plt.draw()
+    plt.pause(1)
+
+def gridisplay_movepoint(oldplot, point):
+    if oldplot:
+        oldplot.remove()
+
+    newplot = plt.scatter(point[1], point[0], marker='>', c='orange')
+    plt.draw()
+    plt.pause(0.1)
+
+    return newplot
+
+def gridisplay_worker(q):
+    plt.rcParams['figure.figsize'] = 15, 10
+    plt.rcParams['lines.markersize'] = 15
+    fig = plt.figure()
+    plt.xlabel('NORTH')
+    plt.ylabel('EAST')
+    plt.show(block=False)
+
+    # Wait for expected grid object and both start and goal points then
+    # initialize the display.
+    grid  = q.get()
+    start = q.get()
+    goal  = q.get()
+    gridisplay_init(grid, start, goal)
+    fig.canvas.flush_events()
+    fig.canvas.draw()
+
+    # Wait for expected path object and add it to the grid.
+    path  = q.get()
+    edges = [[ path[i], path[i+1] ] for i in range(len(path)-1)]
+    gridisplay_addpath(points=path[1:-1], lines=edges)
+
+    # Vehicule spot update loop
+    vehicule = None
+    oldpoint = start
+    while True:
+        # Wait for new position.
+        obj = q.get()
+        point = (obj[0], obj[1])
+
+        # Update vehicule spot on each 20 unit.
+        if LA.norm(np.array(point) - np.array(oldpoint)) > 20:
+            vehicule = gridisplay_movepoint(vehicule, point)
+            oldpoint = point
+
+        # Put final vehicule spot.
+        if LA.norm(np.array(point) - np.array(goal)) < 0.1:
+            gridisplay_movepoint(vehicule, point)
+            break
+
+    plt.show()
+
+gridisp_queue = mp.Queue()
+p = mp.Process(target=gridisplay_worker, args=(gridisp_queue,))
+p.start()
+print("started")
 
 class MotionPlanning(Drone):
 
@@ -34,10 +116,9 @@ class MotionPlanning(Drone):
         self.waypoints = []
         self.in_mission = True
         self.check_state = {}
-        self.north_offset = 0
-        self.east_offset = 0
-        self.data = None
         self.grid = None
+        self.grid_offsets = np.array([0, 0, 0])
+        self.data = None
         self.edges = None
 
         # initial state
@@ -54,6 +135,7 @@ class MotionPlanning(Drone):
                 self.waypoint_transition()
 
         elif self.flight_state == States.WAYPOINT:
+            gridisp_queue.put(self.local_to_grid(self.local_position))
             deadband = 10.0
             if len(self.waypoints) == 0:
                 deadband = 0.1
@@ -118,6 +200,17 @@ class MotionPlanning(Drone):
         print("manual transition")
         self.stop()
         self.in_mission = False
+
+    def local_to_grid(self, position):
+        #return 2D point in the grid.
+        return (position[0] - self.grid_offsets[0],
+                position[1] - self.grid_offsets[1])
+
+    def grid_to_local(self, position):
+        #return 3D point in the local coordinate.
+        return (position[0] + self.grid_offsets[0],
+                position[1] + self.grid_offsets[1],
+                self.grid_offsets[2])
 
     def send_waypoints(self):
         print("Sending waypoints to simulator ...")
@@ -218,32 +311,38 @@ class MotionPlanning(Drone):
         # DONE: convert to current local position using global_to_local()
         current_position = global_to_local(self.global_position, self.global_home)
 
-        print('\tGlobal home {0}\n\tGlobal position {1}\n\tlocal position {2}'.format(self.global_home, self.global_position,
-                                                                         self.local_position))
+        print('\tGlobal home {0}\n\tGlobal position {1}\n\tlocal position {2}'
+              .format(self.global_home, self.global_position, self.local_position))
         print('Loading obstacle map grid ... ')
         # Read in obstacle map
         self.data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
 
         # Define a grid for a particular altitude and safety margin around obstacles
-        self.grid, self.edges, self.north_offset, self.east_offset = create_grid_and_edges(self.data, TARGET_ALTITUDE, SAFETY_DISTANCE)
-        print("North offset = {0}, east offset = {1}".format(self.north_offset, self.east_offset))
+        self.grid, self.edges, north_offset, east_offset = \
+                create_grid_and_edges(self.data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+        self.grid_offsets = np.array([north_offset, east_offset, TARGET_ALTITUDE])
+        print("\tNorth offset = {0}, east offset = {1}"
+              .format(self.grid_offsets[0], self.grid_offsets[1]))
 
-        start = (int(current_position[0]), int(current_position[1]))
-        goal = (0, 0)
+        start = (int(current_position[0]), int(current_position[1]), 0)
+        grid_start = self.local_to_grid(start)
+
         maxn, maxe = self.grid.shape
         while True:
             n = np.random.randint(maxn)
             e = np.random.randint(maxe)
             if self.grid[n, e] == False:
-                goal = (n + self.north_offset, e + self.east_offset) 
+                grid_goal = (n, e)
                 break
 
-        grid_start = (start[0] - self.north_offset, start[1] - self.east_offset) 
-        grid_goal  = (goal[0]  - self.north_offset, goal[1]  - self.east_offset) 
+        goal  = self.grid_to_local(grid_goal)
 
-        print('Local Start and Goal: ', start, goal)
-        print('grid Start and Goal: ', grid_start, grid_goal)
+        print('\tLocal Start and Goal: ', start, goal)
+        print('\tGrid Start and Goal: ', grid_start, grid_goal)
 
+        gridisp_queue.put(self.grid)
+        gridisp_queue.put(grid_start)
+        gridisp_queue.put(grid_goal)
 
         print("Searching for a path ...")
         path = self.myplan0(grid_start, grid_goal)
@@ -255,9 +354,10 @@ class MotionPlanning(Drone):
         path.append(grid_goal)
         print(len(path), path)
 
+        gridisp_queue.put(path)
 
         # Convert path to waypoints
-        waypoints = [[int(p[0]) + self.north_offset, int(p[1]) + self.east_offset, TARGET_ALTITUDE, 0] for p in path]
+        waypoints = [tuple(map(int, self.grid_to_local(p))) + tuple([0]) for p in path]
 
         # Set self.waypoints
         self.waypoints = waypoints
