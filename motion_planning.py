@@ -229,6 +229,8 @@ class MotionPlanning(Drone):
         skel_goal  = closest_point(G, goal)
 
         path, cost = a_star_graph(G, heuristic, skel_start, skel_goal)
+        path.insert(0, start)
+        path.append(goal)
         #return path
 
         return prune_path_graph(path, self.grid)
@@ -250,6 +252,7 @@ class MotionPlanning(Drone):
         # Run A* to find a path from start to goal
         print('Local Start and Goal: ', start, goal)
         path, _ = a_star_graph(graph, heuristic, start, goal)
+        path.insert(0, start)
         path.append(goal)
 
         return path
@@ -351,7 +354,6 @@ class MotionPlanning(Drone):
         #path = self.myplan3(grid_start, grid_goal)
         #path = self.myplan4(grid_start, grid_goal)
         #path = self.myplan5(grid_start, grid_goal)
-        path.append(grid_goal)
         print(len(path), path)
 
         gridisp_queue.put(path)
