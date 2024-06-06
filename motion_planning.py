@@ -344,20 +344,6 @@ class MotionPlanning(Drone):
         #goal = (596, -90)
         #goal = (269, 296)
 
-        #FIXME: building not present in the grid. (start is default center)
-        #       at 10.64557457 203.98001099
-        # maybe we can avoid it by going up.
-        #goal = (581, 252) 
-        #goal = (-13, 238)
-        #goal = (528, 266)
-        #goal = (510, 117)
-
-        #FIXME: building not present in the grid. 
-        #       at between (-85, 265) (162, 223) 
-        #       at position [ 45.99530029 226.99932861 -66.10752106]
-        #goal  = (510, 117) #first go then
-        #goal = (-139, 213)
-
         #FIXME: bug on prune
         #goal = (457, 456) #first go then
         #goal  = (23, 362)
