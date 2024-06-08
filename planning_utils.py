@@ -9,6 +9,9 @@ from shapely.geometry import Polygon, Point, LineString
 from scipy.spatial import Voronoi
 from bresenham import bresenham
 
+def breakpoint():
+    import pdb; pdb.set_trace()
+
 class RRT:
     def __init__(self, x_init):
         # A tree is a special case of a graph with

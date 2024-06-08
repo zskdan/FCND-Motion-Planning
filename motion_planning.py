@@ -349,17 +349,21 @@ class MotionPlanning(Drone):
                 grid_goal = (n, e)
                 break
 
-        goal  = self.grid_to_local(grid_goal)
         #FIXME: path not found (start is default center)
         #goal = (159, 3)
         #goal = (596, -90)
         #goal = (269, 296)
 
-        #FIXME: bug on prune
-        #goal = (457, 456) #first go then
-        #goal  = (23, 362)
-        #grid_goal = self.local_to_grid(goal)
+        #FIXME: path KeyError
+        #grid_path = (880, 611) #start: (839, 564)
 
+        #FIXME: bug on prune
+        #grid_goal = (626, 3)
+
+        #FIXME: safety distance not respected.
+        #grid_goal = (115, 264) #start: (281, 473)
+
+        goal  = self.grid_to_local(grid_goal)
         print('\tLocal Start and Goal: ', start, goal)
         print('\tGrid Start and Goal: ', grid_start, grid_goal)
 
