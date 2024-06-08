@@ -305,7 +305,7 @@ class MotionPlanning(Drone):
 
     def plan_path(self):
         self.flight_state = States.PLANNING
-        TARGET_ALTITUDE = 15
+        TARGET_ALTITUDE = 5
         SAFETY_DISTANCE = 5
 
         self.target_position[2] = TARGET_ALTITUDE
@@ -369,6 +369,17 @@ class MotionPlanning(Drone):
 
         print("Searching for a path ...")
         path = self.myplan0(grid_start, grid_goal)
+
+        altitude_workarround = TARGET_ALTITUDE
+        while not path:
+            altitude_workarround += 10
+            self.target_position[2] = altitude_workarround
+            self.grid_offsets[2] = altitude_workarround
+            print("Retry generating the grid at altitude:", altitude_workarround)
+            self.grid, self.edges, north_offset, east_offset = \
+                create_grid_and_edges(self.data, altitude_workarround, SAFETY_DISTANCE)
+            path = self.myplan0(grid_start, grid_goal)
+
         #path = self.myplan1(grid_start, grid_goal)
         #path = self.myplan2(grid_start, grid_goal)
         #path = self.myplan3(grid_start, grid_goal)
@@ -398,14 +409,13 @@ class MotionPlanning(Drone):
 
         self.stop_log()
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=5760, help='Port number')
     parser.add_argument('--host', type=str, default='127.0.0.1', help="host address, i.e. '127.0.0.1'")
     args = parser.parse_args()
 
-    conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=60)
+    conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=300)
     drone = MotionPlanning(conn)
     time.sleep(1)
 
