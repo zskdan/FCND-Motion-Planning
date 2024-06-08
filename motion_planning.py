@@ -147,11 +147,17 @@ class MotionPlanning(Drone):
                     if np.linalg.norm(self.local_velocity[0:2]) < 1.0:
                         self.landing_transition()
 
+    def isHovering(self):
+        return (abs(self.local_velocity[0]) < 0.01 and \
+                abs(self.local_velocity[1]) < 0.01 and \
+                abs(self.local_velocity[2]) < 0.01)
+
     def velocity_callback(self):
+        # We trigger disarming if the drone is hovering. to make it possible
+        # to land on top of a building.
         if self.flight_state == States.LANDING:
-            if self.global_position[2] - self.global_home[2] < 0.1:
-                if abs(self.local_position[2]) < 0.01:
-                    self.disarming_transition()
+            if self.isHovering():
+                self.disarming_transition()
 
     def state_callback(self):
         if self.in_mission:
