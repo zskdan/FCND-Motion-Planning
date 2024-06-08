@@ -303,18 +303,16 @@ def prune_path_graph(path, grid):
         i = 0
         j = 1
         while j < len(path):
-            if collision_check(grid, path[i], path[j]) == False:
-                j += 1;
-            else:
+            if collision_check(grid, path[i], path[j]) == True:
                 pruned_path.append(path[j-1])
                 i = j-1
+            j += 1;
 
         pruned_path.append(path[-1])
 
     print("\tPrune path from {} to {} ".format(len(path), len(pruned_path)))
 
     return pruned_path
-
 
 def prune_path(path):
     pruned_path = []
@@ -438,7 +436,6 @@ def a_star_graph(graph, heuristic, start, goal):
         current_node = item[1]
 
         if current_node == goal:
-            print('Found a path.')
             found = True
             break
         else:
@@ -452,14 +449,16 @@ def a_star_graph(graph, heuristic, start, goal):
 
                     branch[next_node] = (new_cost, current_node)
 
-    if found:
+    if found and branch:
         # retrace steps
         n = goal
         path_cost = branch[n][0]
         while branch[n][1] != start:
             path.append(branch[n][1])
             n = branch[n][1]
+
         path.append(branch[n][1])
+        print('Found a path.')
 
     return path[::-1], path_cost
 
@@ -514,7 +513,6 @@ def a_star_grid(grid, h, start, goal):
         print('Failed to find a path!')
         print('**********************')
     return path[::-1], path_cost
-
 
 
 def heuristic(position, goal_position):

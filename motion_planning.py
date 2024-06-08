@@ -234,12 +234,17 @@ class MotionPlanning(Drone):
         skel_start = closest_point(G, start)
         skel_goal  = closest_point(G, goal)
 
-        path, cost = a_star_graph(G, heuristic, skel_start, skel_goal)
-        path.insert(0, start)
-        path.append(goal)
-        #return path
+        # return a direct path (not null). if goal and start are too closed.
+        if np.linalg.norm(np.array(skel_start) - np.array(skel_goal)) < 0.1:
+            path = [start, goal]
+        else :
+            path, cost = a_star_graph(G, heuristic, skel_start, skel_goal)
+            if path:
+                path.insert(0, start)
+                path.append(goal)
+                return prune_path_graph(path, self.grid)
 
-        return prune_path_graph(path, self.grid)
+        return path
 
     def myplan1(self, start, goal):
         sampler = Sampler(self.data)
