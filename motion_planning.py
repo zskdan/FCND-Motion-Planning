@@ -120,6 +120,7 @@ class MotionPlanning(Drone):
         self.grid_offsets = np.array([0, 0, 0])
         self.data = None
         self.obspoints = None
+        self.safety_distance = 0
 
         # initial state
         self.flight_state = States.MANUAL
@@ -136,7 +137,7 @@ class MotionPlanning(Drone):
 
         elif self.flight_state == States.WAYPOINT:
             gridisp_queue.put(self.local_to_grid(self.local_position))
-            deadband = 10.0
+            deadband = self.safety_distance
             if len(self.waypoints) == 0:
                 deadband = 0.1
 
@@ -332,6 +333,7 @@ class MotionPlanning(Drone):
         TARGET_ALTITUDE = 15
         SAFETY_DISTANCE = 5
 
+        self.safety_distance    = SAFETY_DISTANCE
         self.target_position[2] = TARGET_ALTITUDE
 
         # DONE: read lat0, lon0 from colliders into floating point values
