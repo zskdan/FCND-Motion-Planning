@@ -118,7 +118,6 @@ class MotionPlanning(Drone):
         self.check_state = {}
         self.grid = None
         self.grid_offsets = np.array([0, 0, 0])
-        self.data = None
         self.obspoints = None
         self.safety_distance = 0
 
@@ -350,11 +349,11 @@ class MotionPlanning(Drone):
               .format(self.global_home, self.global_position, self.local_position))
         print('Loading obstacle map grid ... ')
         # Read in obstacle map
-        self.data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
+        data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
 
         # Define a grid for a particular altitude and safety margin around obstacles
         self.grid, self.obspoints, north_offset, east_offset = \
-                create_grid(self.data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+                create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
         self.grid_offsets = np.array([north_offset, east_offset, TARGET_ALTITUDE])
         print("\tNorth offset = {0}, east offset = {1}"
               .format(self.grid_offsets[0], self.grid_offsets[1]))
@@ -404,7 +403,7 @@ class MotionPlanning(Drone):
             self.grid_offsets[2] = TARGET_ALTITUDE
             print("Retry generating the grid at altitude:", TARGET_ALTITUDE)
             self.grid, self.obspoints, north_offset, east_offset = \
-                create_grid(self.data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+                create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
             path = self.myplan(grid_start, grid_goal)
 
         print(len(path), path)
