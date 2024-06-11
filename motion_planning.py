@@ -319,10 +319,9 @@ class MotionPlanning(Drone):
 #        return self.myplan1(grid_start, grid_goal)
 #        return self.myplan2(grid_start, grid_goal)
 #        return self.myplan3(grid_start, grid_goal)
-#        return self.myplan4(grid_start, grid_goal)
 #        return self.myplan5(grid_start, grid_goal)
-#        return self.myplan_graph(start, goal)
-        return self.myplan_rrt(start, goal)
+        return self.myplan_graph(start, goal)
+#        return self.myplan_rrt(start, goal)
 
     def plan_path(self):
         self.flight_state = States.PLANNING
@@ -384,6 +383,9 @@ class MotionPlanning(Drone):
 
         #FIXME: safety distance not respected.
         #grid_goal = (115, 264) #start: (281, 473)
+
+        # path not correct
+        #grid_goal = (908, 32)  #S(876, 882) #G(908, 32)
 
         goal  = self.grid_to_local(grid_goal)
         print('\tLocal Start and Goal: ', start, goal)
