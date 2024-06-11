@@ -57,10 +57,11 @@ def new_state(x_near, u, dt):
     y = x_near[1] + np.sin(u)*dt
     return (x, y)
 
-def generate_RRT(grid, x_init, x_goal, num_vertices, dt):
+def create_RRT(grid, x_init, x_goal, num_vertices, dt):
     rrt = RRT(x_init)
 
     maxiter = 0
+    found = False
     for _ in range(num_vertices):
         maxiter += 1
 
@@ -82,8 +83,11 @@ def generate_RRT(grid, x_init, x_goal, num_vertices, dt):
                 # the edge
                 rrt.add_edge(x_near, x_new, u)
                 if LA.norm(np.array(x_new) - np.array(x_goal)) < 5:
+                    found = True
                     print("path found!")
                     break
+    if not found:
+        rrt = None
 
     return rrt, maxiter, x_init, x_new
 

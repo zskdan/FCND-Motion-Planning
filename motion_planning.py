@@ -246,7 +246,7 @@ class MotionPlanning(Drone):
             if path:
                 path.insert(0, start)
                 path.append(goal)
-                return prune_path(path, self.grid)
+                path = prune_path(path, self.grid)
 
         return path
 
@@ -280,14 +280,6 @@ class MotionPlanning(Drone):
         path =  [(316, 445), (316, 446), (317, 446), (317, 447), (318, 447), (318, 448), (319, 448), (319, 449), (320, 449), (320, 450), (321, 450), (321, 451), (322, 451), (322, 452), (323, 452), (323, 453), (324, 453), (324, 454), (325, 454), (325, 455), (326, 455)]
         return path
 
-    def myplan4(self, start, goal):
-        print("generating rrt")
-        num_vertices = 300
-        dt = 1
-        rrt = generate_RRT(self.grid, start, num_vertices, dt)
-        path, _ = a_star_graph(rrt, heuristic, start, goal)
-        return prune_path(path)
-
     def myplan5(self, start, goal):
         sampler = Sampler(self.data)
         print("here1")
@@ -308,16 +300,20 @@ class MotionPlanning(Drone):
         path.append(goal)
 
     def myplan_rrt(self, start, goal):
+        path = []
         dt = 10
         maxiteration = 1000
         rrt, iteration, snode, gnode = \
-            generate_RRT(self.grid, start, goal, maxiteration, dt)
+            create_RRT(self.grid, start, goal, maxiteration, dt)
         #print("generate path after {} iteration".format(iteration))
-        path = nx.shortest_path(rrt.tree, source=snode, target=gnode)
-        if snode != goal:
-            path.append(goal)
+        if rrt:
+            path = nx.shortest_path(rrt.tree, source=snode, target=gnode)
+            if snode != goal:
+                path.append(goal)
+            path = prune_path(path, self.grid)
 
-        return prune_path(path, self.grid)
+        return path
+
 
     def myplan(self, start, goal):
 #        return self.myplan1(grid_start, grid_goal)
