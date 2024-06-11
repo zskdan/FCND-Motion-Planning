@@ -280,7 +280,16 @@ def collision_check(grid, p1, p2):
 
     return hit
 
+# Prune the path in both directions
 def prune_path(path, grid):
+    # the one way to goal.
+    ppath = prune_path_oneway(path, grid)
+    # the way back to start.
+    ppathback = prune_path_oneway(ppath[::-1], grid)
+
+    return ppathback[::-1]
+
+def prune_path_oneway(path, grid):
     print(path)
     pruned_path = []
 
