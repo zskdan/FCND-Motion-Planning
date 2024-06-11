@@ -15,8 +15,9 @@ from udacidrone.connection import MavlinkConnection
 from udacidrone.messaging import MsgID
 from udacidrone.frame_utils import global_to_local
 
-import matplotlib.pyplot as plt
-import multiprocessing as mp
+from gridisplay import Gridisplay
+
+gridisp = Gridisplay()
 
 class States(Enum):
     MANUAL = auto()
@@ -26,86 +27,6 @@ class States(Enum):
     LANDING = auto()
     DISARMING = auto()
     PLANNING = auto()
-
-def gridisplay_addpath(points=None, lines=None):
-    print("\tUpdate grid")
-    if lines:
-        print("\t\tadd edges")
-        for (n1, n2) in lines:
-            plt.plot([n1[1], n2[1]], [n1[0], n2[0]], 'black')
-
-    if points:
-        print("\t\tadd points")
-        for p in points:
-            plt.scatter(p[1], p[0], marker='*', c='red')
-
-    plt.draw()
-    plt.pause(0.1)
-
-def gridisplay_init(grid, start, goal):
-    plt.imshow(grid, cmap='Greys', origin='lower')
-    plt.scatter(start[1], start[0], marker='p', c='blue')
-    plt.scatter(goal[1], goal[0], marker='X', c='blue')
-
-    plt.draw()
-    plt.pause(1)
-
-def gridisplay_movepoint(oldplot, point):
-    if oldplot:
-        oldplot.remove()
-
-    newplot = plt.scatter(point[1], point[0], marker='>', c='orange')
-    plt.draw()
-    plt.pause(0.1)
-
-    return newplot
-
-def gridisplay_worker(q):
-    plt.rcParams['figure.figsize'] = 15, 10
-    plt.rcParams['lines.markersize'] = 15
-    fig = plt.figure()
-    plt.xlabel('NORTH')
-    plt.ylabel('EAST')
-    plt.show(block=False)
-
-    # Wait for expected grid object and both start and goal points then
-    # initialize the display.
-    grid  = q.get()
-    start = q.get()
-    goal  = q.get()
-    gridisplay_init(grid, start, goal)
-    fig.canvas.flush_events()
-    fig.canvas.draw()
-
-    # Wait for expected path object and add it to the grid.
-    path  = q.get()
-    edges = [[ path[i], path[i+1] ] for i in range(len(path)-1)]
-    gridisplay_addpath(points=path[1:-1], lines=edges)
-
-    # Vehicule spot update loop
-    vehicule = None
-    oldpoint = start
-    while True:
-        # Wait for new position.
-        obj = q.get()
-        point = (obj[0], obj[1])
-
-        # Update vehicule spot on each 20 unit.
-        if LA.norm(np.array(point) - np.array(oldpoint)) > 20:
-            vehicule = gridisplay_movepoint(vehicule, point)
-            oldpoint = point
-
-        # Put final vehicule spot.
-        if LA.norm(np.array(point) - np.array(goal)) < 0.1:
-            gridisplay_movepoint(vehicule, point)
-            break
-
-    plt.show()
-
-gridisp_queue = mp.Queue()
-p = mp.Process(target=gridisplay_worker, args=(gridisp_queue,))
-p.start()
-print("started")
 
 class MotionPlanning(Drone):
 
@@ -135,7 +56,7 @@ class MotionPlanning(Drone):
                 self.waypoint_transition()
 
         elif self.flight_state == States.WAYPOINT:
-            gridisp_queue.put(self.local_to_grid(self.local_position))
+            gridisp.put(self.local_to_grid(self.local_position))
             deadband = self.safety_distance
             if len(self.waypoints) == 0:
                 deadband = 0.1
@@ -390,9 +311,9 @@ class MotionPlanning(Drone):
         print('\tLocal Start and Goal: ', start, goal)
         print('\tGrid Start and Goal: ', grid_start, grid_goal)
 
-        gridisp_queue.put(self.grid)
-        gridisp_queue.put(grid_start)
-        gridisp_queue.put(grid_goal)
+        gridisp.put(self.grid)
+        gridisp.put(grid_start)
+        gridisp.put(grid_goal)
 
         print("Searching for a path ...")
         path = self.myplan(grid_start, grid_goal)
@@ -408,7 +329,7 @@ class MotionPlanning(Drone):
 
         print(len(path), path)
 
-        gridisp_queue.put(path)
+        gridisp.put(path)
 
         # Convert path to waypoints
         waypoints = [tuple(map(int, self.grid_to_local(p))) + tuple([0]) for p in path]
