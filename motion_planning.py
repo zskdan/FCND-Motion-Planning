@@ -309,7 +309,7 @@ class MotionPlanning(Drone):
 
     def myplan_rrt(self, start, goal):
         dt = 10
-        maxiteration = 20000
+        maxiteration = 1000
         rrt, iteration, snode, gnode = \
             generate_RRT(self.grid, start, goal, maxiteration, dt)
         #print("generate path after {} iteration".format(iteration))
