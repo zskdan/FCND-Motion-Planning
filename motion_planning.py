@@ -305,9 +305,18 @@ class MotionPlanning(Drone):
         path, _ = a_star_graph(graph, heuristic, start, goal)
         path.append(goal)
 
+    def myplan6(self, start, goal):
+        rrt, iteration, snode, gnode = generate_RRT(self.grid, start, goal, 20000, 10)
+        print("generate path after {} iteration".format(iteration))
+        path = nx.shortest_path(rrt.tree, source=snode, target=gnode)
+        if snode != goal:
+            path.append(goal)
+
+        return prune_path_graph(path, self.grid)
+
     def plan_path(self):
         self.flight_state = States.PLANNING
-        TARGET_ALTITUDE = 5
+        TARGET_ALTITUDE = 15
         SAFETY_DISTANCE = 5
 
         self.target_position[2] = TARGET_ALTITUDE
@@ -335,7 +344,8 @@ class MotionPlanning(Drone):
 
         # Define a grid for a particular altitude and safety margin around obstacles
         self.grid, self.edges, north_offset, east_offset = \
-                create_grid_and_edges(self.data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+                create_grid(self.data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+ #               create_grid_and_edges(self.data, TARGET_ALTITUDE, SAFETY_DISTANCE)
         self.grid_offsets = np.array([north_offset, east_offset, TARGET_ALTITUDE])
         print("\tNorth offset = {0}, east offset = {1}"
               .format(self.grid_offsets[0], self.grid_offsets[1]))
@@ -374,7 +384,8 @@ class MotionPlanning(Drone):
         gridisp_queue.put(grid_goal)
 
         print("Searching for a path ...")
-        path = self.myplan0(grid_start, grid_goal)
+        #path = self.myplan0(grid_start, grid_goal)
+        path = self.myplan6(grid_start, grid_goal)
 
         altitude_workarround = TARGET_ALTITUDE
         while not path:
@@ -421,7 +432,7 @@ if __name__ == "__main__":
     parser.add_argument('--host', type=str, default='127.0.0.1', help="host address, i.e. '127.0.0.1'")
     args = parser.parse_args()
 
-    conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=300)
+    conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=600)
     drone = MotionPlanning(conn)
     time.sleep(1)
 

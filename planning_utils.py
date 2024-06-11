@@ -55,28 +55,37 @@ def select_input(x_rand, x_near):
 def new_state(x_near, u, dt):
     x = x_near[0] + np.cos(u)*dt
     y = x_near[1] + np.sin(u)*dt
-    return [x, y]
+    return (x, y)
 
-def generate_RRT(grid, x_init, num_vertices, dt):
+def generate_RRT(grid, x_init, x_goal, num_vertices, dt):
     rrt = RRT(x_init)
 
+    maxiter = 0
     for _ in range(num_vertices):
+        maxiter += 1
 
-        x_rand = sample_state(grid)
-        # sample states until a free state is found
-        while grid[int(x_rand[0]), int(x_rand[1])] == 1:
+        if np.random.randint(0,100) < 5:
+            x_rand = x_goal
+        else:
             x_rand = sample_state(grid)
+            # sample states until a free state is found
+            while grid[int(x_rand[0]), int(x_rand[1])] == 1:
+                x_rand = sample_state(grid)
 
         x_near = nearest_neighbor(x_rand, rrt)
         u = select_input(x_rand, x_near)
         x_new = new_state(x_near, u, dt)
 
-        if grid[int(x_new[0]), int(x_new[1])] == 0:
-            # the orientation `u` will be added as metadata to
-            # the edge
-            rrt.add_edge(x_near, x_new, u)
+        if x_new[0] < grid.shape[0] and x_new[1] < grid.shape[1]:
+            if grid[int(x_new[0]), int(x_new[1])] == 0:
+                # the orientation `u` will be added as metadata to
+                # the edge
+                rrt.add_edge(x_near, x_new, u)
+                if LA.norm(np.array(x_new) - np.array(x_goal)) < 5:
+                    print("path found!")
+                    break
 
-    return rrt
+    return rrt, maxiter, x_init, x_new
 
 def create_grid(data, drone_altitude, safety_distance):
     """
@@ -113,7 +122,7 @@ def create_grid(data, drone_altitude, safety_distance):
             ]
             grid[obstacle[0]:obstacle[1]+1, obstacle[2]:obstacle[3]+1] = 1
 
-    return grid, int(north_min), int(east_min)
+    return grid, None, int(north_min), int(east_min)
 
 def create_grid_and_edges(data, drone_altitude, safety_distance):
     """
