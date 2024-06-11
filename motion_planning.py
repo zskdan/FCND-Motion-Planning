@@ -119,7 +119,7 @@ class MotionPlanning(Drone):
         self.grid = None
         self.grid_offsets = np.array([0, 0, 0])
         self.data = None
-        self.edges = None
+        self.obspoints = None
 
         # initial state
         self.flight_state = States.MANUAL
@@ -225,9 +225,10 @@ class MotionPlanning(Drone):
         data = msgpack.dumps(self.waypoints)
         self.connection._master.write(data)
 
-    def myplan0(self, start, goal):
+    def myplan_graph(self, start, goal):
+        edges = create_edges(self.grid, self.obspoints)
         G = nx.Graph()
-        for e in self.edges:
+        for e in edges:
             p1 = e[0]
             p2 = e[1]
             dist = LA.norm(np.array(p2) - np.array(p1))
@@ -244,7 +245,7 @@ class MotionPlanning(Drone):
             if path:
                 path.insert(0, start)
                 path.append(goal)
-                return prune_path_graph(path, self.grid)
+                return prune_path(path, self.grid)
 
         return path
 
@@ -305,14 +306,26 @@ class MotionPlanning(Drone):
         path, _ = a_star_graph(graph, heuristic, start, goal)
         path.append(goal)
 
-    def myplan6(self, start, goal):
-        rrt, iteration, snode, gnode = generate_RRT(self.grid, start, goal, 20000, 10)
-        print("generate path after {} iteration".format(iteration))
+    def myplan_rrt(self, start, goal):
+        dt = 10
+        maxiteration = 20000
+        rrt, iteration, snode, gnode = \
+            generate_RRT(self.grid, start, goal, maxiteration, dt)
+        #print("generate path after {} iteration".format(iteration))
         path = nx.shortest_path(rrt.tree, source=snode, target=gnode)
         if snode != goal:
             path.append(goal)
 
-        return prune_path_graph(path, self.grid)
+        return prune_path(path, self.grid)
+
+    def myplan(self, start, goal):
+#        return self.myplan1(grid_start, grid_goal)
+#        return self.myplan2(grid_start, grid_goal)
+#        return self.myplan3(grid_start, grid_goal)
+#        return self.myplan4(grid_start, grid_goal)
+#        return self.myplan5(grid_start, grid_goal)
+#        return self.myplan_graph(start, goal)
+        return self.myplan_rrt(start, goal)
 
     def plan_path(self):
         self.flight_state = States.PLANNING
@@ -343,9 +356,8 @@ class MotionPlanning(Drone):
         self.data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
 
         # Define a grid for a particular altitude and safety margin around obstacles
-        self.grid, self.edges, north_offset, east_offset = \
+        self.grid, self.obspoints, north_offset, east_offset = \
                 create_grid(self.data, TARGET_ALTITUDE, SAFETY_DISTANCE)
- #               create_grid_and_edges(self.data, TARGET_ALTITUDE, SAFETY_DISTANCE)
         self.grid_offsets = np.array([north_offset, east_offset, TARGET_ALTITUDE])
         print("\tNorth offset = {0}, east offset = {1}"
               .format(self.grid_offsets[0], self.grid_offsets[1]))
@@ -384,24 +396,17 @@ class MotionPlanning(Drone):
         gridisp_queue.put(grid_goal)
 
         print("Searching for a path ...")
-        #path = self.myplan0(grid_start, grid_goal)
-        path = self.myplan6(grid_start, grid_goal)
+        path = self.myplan(grid_start, grid_goal)
 
-        altitude_workarround = TARGET_ALTITUDE
         while not path:
-            altitude_workarround += 10
-            self.target_position[2] = altitude_workarround
-            self.grid_offsets[2] = altitude_workarround
-            print("Retry generating the grid at altitude:", altitude_workarround)
-            self.grid, self.edges, north_offset, east_offset = \
-                create_grid_and_edges(self.data, altitude_workarround, SAFETY_DISTANCE)
-            path = self.myplan0(grid_start, grid_goal)
+            TARGET_ALTITUDE += 10
+            self.target_position[2] = TARGET_ALTITUDE
+            self.grid_offsets[2] = TARGET_ALTITUDE
+            print("Retry generating the grid at altitude:", TARGET_ALTITUDE)
+            self.grid, self.obspoints, north_offset, east_offset = \
+                create_grid(self.data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+            path = self.myplan(grid_start, grid_goal)
 
-        #path = self.myplan1(grid_start, grid_goal)
-        #path = self.myplan2(grid_start, grid_goal)
-        #path = self.myplan3(grid_start, grid_goal)
-        #path = self.myplan4(grid_start, grid_goal)
-        #path = self.myplan5(grid_start, grid_goal)
         print(len(path), path)
 
         gridisp_queue.put(path)
