@@ -37,6 +37,7 @@ class MotionPlanning(Drone):
         self.waypoints = []
         self.in_mission = True
         self.check_state = {}
+
         self.grid = None
         self.grid_offsets = np.array([0, 0, 0])
         self.obspoints = None
@@ -130,13 +131,13 @@ class MotionPlanning(Drone):
         self.stop()
         self.in_mission = False
 
+    # Helper to return 2D point in the grid.
     def local_to_grid(self, position):
-        #return 2D point in the grid.
         return (position[0] - self.grid_offsets[0],
                 position[1] - self.grid_offsets[1])
 
+    # Helper to return 3D point in the local coordinate.
     def grid_to_local(self, position):
-        #return 3D point in the local coordinate.
         return (position[0] + self.grid_offsets[0],
                 position[1] + self.grid_offsets[1],
                 self.grid_offsets[2])
@@ -146,7 +147,9 @@ class MotionPlanning(Drone):
         data = msgpack.dumps(self.waypoints)
         self.connection._master.write(data)
 
+    # Graph + A_star planning algorithm.
     def myplan_graph(self, start, goal):
+        # Create graph from the grid and obstacle points.
         edges = create_edges(self.grid, self.obspoints)
         G = nx.Graph()
         for e in edges:
@@ -155,22 +158,26 @@ class MotionPlanning(Drone):
             dist = LA.norm(np.array(p2) - np.array(p1))
             G.add_edge(p1, p2, weight=dist)
 
+        # Looking for closest points of start and goal in graph.
         skel_start = closest_point(G, start)
         skel_goal  = closest_point(G, goal)
 
-        # return a direct path (not null). if goal and start are too closed.
         if np.linalg.norm(np.array(skel_start) - np.array(skel_goal)) < 0.1:
+            # Return a direct path (not null), if goal and start points are too closed.
             path = [start, goal]
         else :
+            # Run the a_star algorithm to find a path.
             path, cost = a_star_graph(G, heuristic, skel_start, skel_goal)
             if path:
+                # Insert start and goal points to the path, as the path is using the closest_points.
                 path.insert(0, start)
                 path.append(goal)
+                # Prune the path to only few 2 by 2 coolinear waypoints.
                 path = prune_path(path, self.grid)
 
         return path
 
-    def myplan1(self, start, goal):
+    def myplan_pr(self, start, goal):
         sampler = Sampler(self.data)
         print("here1")
         polygons = sampler._polygons
@@ -192,33 +199,11 @@ class MotionPlanning(Drone):
 
         return path
 
-    def myplan2(self, start, goal):
+    def myplan_grid(self, start, goal):
         path, _ = a_star_grid(self.grid, heuristic, start, goal)
         return prune_path(path)
 
-    def myplan3(self, start, goal):
-        path =  [(316, 445), (316, 446), (317, 446), (317, 447), (318, 447), (318, 448), (319, 448), (319, 449), (320, 449), (320, 450), (321, 450), (321, 451), (322, 451), (322, 452), (323, 452), (323, 453), (324, 453), (324, 454), (325, 454), (325, 455), (326, 455)]
-        return path
-
-    def myplan5(self, start, goal):
-        sampler = Sampler(self.data)
-        print("here1")
-        polygons = sampler._polygons
-        print("here2")
-        nodes = sampler.sample(300)
-        print("here3")
-
-        graph = create_graph(nodes, 5, polygons)
-        start = list(graph.nodes)[0]
-        k = np.random.randint(len(graph.nodes))
-        print(k, len(graph.nodes))
-        goal = list(graph.nodes)[k]
-
-        # Run A* to find a path from start to goal
-        print('Local Start and Goal: ', start, goal)
-        path, _ = a_star_graph(graph, heuristic, start, goal)
-        path.append(goal)
-
+    # RRT planning algorithm.
     def myplan_rrt(self, start, goal):
         path = []
         dt = 10
@@ -236,11 +221,9 @@ class MotionPlanning(Drone):
 
 
     def myplan(self, start, goal):
-#        return self.myplan1(grid_start, grid_goal)
-#        return self.myplan2(grid_start, grid_goal)
-#        return self.myplan3(grid_start, grid_goal)
-#        return self.myplan5(grid_start, grid_goal)
-        return self.myplan_graph(start, goal)
+        return self.myplan_grid(start, goal)
+#        return self.myplan_pr(start, goal)
+#        return self.myplan_graph(start, goal)
 #        return self.myplan_rrt(start, goal)
 
     def plan_path(self):
