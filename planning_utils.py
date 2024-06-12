@@ -84,7 +84,7 @@ def create_RRT(grid, x_init, x_goal, num_vertices, dt):
                 rrt.add_edge(x_near, x_new, u)
                 if LA.norm(np.array(x_new) - np.array(x_goal)) < 5:
                     found = True
-                    print("path found!")
+                    print("\tPath found!")
                     break
     if not found:
         rrt = None
@@ -294,7 +294,7 @@ def prune_path(path, grid):
     return ppathback[::-1]
 
 def prune_path_oneway(path, grid):
-    print(path)
+    #print(path)
     pruned_path = []
 
     if path is not None:
@@ -386,7 +386,7 @@ def a_star_graph_sol(graph, h, start, goal):
             current_cost = branch[current_node][0]
 
         if current_node == goal:
-            print('Found a path.')
+            print('\tFound a path.')
             found = True
             break
         else:
@@ -457,7 +457,7 @@ def a_star_graph(graph, heuristic, start, goal):
             n = branch[n][1]
 
         path.append(branch[n][1])
-        print('Found a path.')
+        print('\tFound a path.')
 
     return path[::-1], path_cost
 
@@ -482,7 +482,7 @@ def a_star_grid(grid, h, start, goal):
             current_cost = branch[current_node][0]
 
         if current_node == goal:
-            print('Found a path.')
+            print('\tFound a path.')
             found = True
             break
         else:

@@ -109,7 +109,7 @@ class MotionPlanning(Drone):
         self.flight_state = States.WAYPOINT
         print("waypoint transition")
         self.target_position = self.waypoints.pop(0)
-        print('target position', self.target_position)
+        print('\ttarget position', self.target_position)
         heading = np.arctan2(self.target_position[1] - self.local_position[1],
                              self.target_position[0] - self.local_position[0])
         self.cmd_position(self.target_position[0], self.target_position[1], self.target_position[2], heading)
@@ -149,6 +149,7 @@ class MotionPlanning(Drone):
 
     # Graph + A_star planning algorithm.
     def myplan_graph(self, start, goal):
+        print("\tUsing Graph A_star algorithm")
         # Create graph from the grid and obstacle points.
         edges = create_edges(self.grid, self.obspoints)
         G = nx.Graph()
@@ -178,6 +179,7 @@ class MotionPlanning(Drone):
         return path
 
     def myplan_pr(self, start, goal):
+        print("\tUsing Probabilistic Roadmap algorithm")
         sampler = Sampler(self.data)
         print("here1")
         polygons = sampler._polygons
@@ -199,12 +201,17 @@ class MotionPlanning(Drone):
 
         return path
 
+    # Planning algorithm which apply directly A_star to the grid.
+    # WARNING: this may take long time to process, which may exceed the
+    # Mavlink connection timeout.
     def myplan_grid(self, start, goal):
+        print("\tUsing Grid A_star algorithm")
         path, _ = a_star_grid(self.grid, heuristic, start, goal)
-        return prune_path(path)
+        return prune_path(path, self.grid)
 
     # RRT planning algorithm.
     def myplan_rrt(self, start, goal):
+        print("\tUsing RRT algorithm")
         path = []
         dt = 10
         maxiteration = 1000
@@ -219,12 +226,17 @@ class MotionPlanning(Drone):
 
         return path
 
-
     def myplan(self, start, goal):
-        return self.myplan_grid(start, goal)
-#        return self.myplan_pr(start, goal)
-#        return self.myplan_graph(start, goal)
-#        return self.myplan_rrt(start, goal)
+        t0 = time.time()
+        #path = self.myplan_grid(start, goal)
+        #path = self.myplan_pr(start, goal)
+        path = self.myplan_graph(start, goal)
+        #path = self.myplan_rrt(start, goal)
+        time_taken = time.time() - t0
+        print("\t",len(path), path)
+        print("\tPlanning process took {} seconds ...".format(time_taken))
+
+        return path
 
     def plan_path(self):
         self.flight_state = States.PLANNING
@@ -310,8 +322,6 @@ class MotionPlanning(Drone):
                 create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
             path = self.myplan(grid_start, grid_goal)
 
-        print(len(path), path)
-
         gridisp.put(path)
 
         # Convert path to waypoints
@@ -340,6 +350,8 @@ if __name__ == "__main__":
     parser.add_argument('--host', type=str, default='127.0.0.1', help="host address, i.e. '127.0.0.1'")
     args = parser.parse_args()
 
+    # Change the timeout to an arbitrary high value in order to avoid hanging
+    # the connection in case of planning algorithm that may take long time.
     conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=600)
     drone = MotionPlanning(conn)
     time.sleep(1)

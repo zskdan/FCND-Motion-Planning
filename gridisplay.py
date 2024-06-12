@@ -24,14 +24,14 @@ class Gridisplay:
         return self.q.put(obj)
 
 def gridisplay_addpath(points=None, lines=None):
-    print("\tUpdate grid")
+    print("Update Gridisplay ...")
     if lines:
-        print("\t\tadd edges")
+        print("\tadd edges")
         for (n1, n2) in lines:
             plt.plot([n1[1], n2[1]], [n1[0], n2[0]], 'black')
 
     if points:
-        print("\t\tadd points")
+        print("\tadd points")
         for p in points:
             plt.scatter(p[1], p[0], marker='*', c='red')
 
@@ -39,7 +39,10 @@ def gridisplay_addpath(points=None, lines=None):
     plt.pause(0.1)
 
 def gridisplay_init(grid, start, goal):
+    print("Initialize Gridisplay ...")
+    print("\tShow grid")
     plt.imshow(grid, cmap='Greys', origin='lower')
+    print("\tShow start and goal points")
     plt.scatter(start[1], start[0], marker='p', c='blue')
     plt.scatter(goal[1], goal[0], marker='X', c='blue')
 
