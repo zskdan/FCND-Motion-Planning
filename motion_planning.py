@@ -62,7 +62,7 @@ class MotionPlanning(Drone):
 
         elif self.flight_state == States.WAYPOINT:
             gridisp.put(self.local_to_grid(self.local_position))
-            deadband = self.safety_distance
+            deadband = 2 * self.safety_distance
             if len(self.waypoints) == 0:
                 deadband = 0.1
 
@@ -185,7 +185,7 @@ class MotionPlanning(Drone):
 
     def myplan_pr(self, start, goal):
         print("\tUsing Probabilistic Roadmap algorithm")
-        sampler = Sampler(self.data)
+        sampler = Sampler(self.self.obsdata)
         print("here1")
         polygons = sampler._polygons
         print("here2")
@@ -218,8 +218,8 @@ class MotionPlanning(Drone):
     def myplan_rrt(self, start, goal):
         print("\tUsing RRT algorithm")
         path = []
-        dt = 10
-        maxiteration = 1000
+        dt = 20
+        maxiteration = 5000
         rrt, iteration, snode, gnode = \
             create_RRT(self.grid, start, goal, maxiteration, dt)
         #print("generate path after {} iteration".format(iteration))
@@ -233,10 +233,17 @@ class MotionPlanning(Drone):
 
     def myplan(self, start, goal):
         t0 = time.time()
-        #path = self.myplan_grid(start, goal)
-        #path = self.myplan_pr(start, goal)
-        path = self.myplan_graph(start, goal)
-        #path = self.myplan_rrt(start, goal)
+
+        if np.linalg.norm(np.array(start) - np.array(goal)) < self.safety_distance:
+            # Return a direct path (not null), if goal and start points are too
+            # close.
+            path = [start, goal]
+        else:
+            #path = self.myplan_grid(start, goal)
+            #path = self.myplan_pr(start, goal)
+            #path = self.myplan_graph(start, goal)
+            path = self.myplan_rrt(start, goal)
+
         time_taken = time.time() - t0
         print("\t",len(path), path)
         print("\tPlanning process took {} seconds ...".format(time_taken))
@@ -245,7 +252,7 @@ class MotionPlanning(Drone):
 
     def plan_path(self):
         self.flight_state = States.PLANNING
-        TARGET_ALTITUDE = 15
+        TARGET_ALTITUDE = 5
         SAFETY_DISTANCE = 5
 
         self.safety_distance    = SAFETY_DISTANCE

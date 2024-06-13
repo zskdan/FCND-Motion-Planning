@@ -58,6 +58,9 @@ def new_state(x_near, u, dt):
     return (x, y)
 
 def create_RRT(grid, x_init, x_goal, num_vertices, dt):
+    return generate_RRT(grid, x_init, x_goal, num_vertices, dt, pathlookup=True)
+
+def generate_RRT(grid, x_init, x_goal, num_vertices, dt, pathlookup=False):
     rrt = RRT(x_init)
 
     maxiter = 0
@@ -65,7 +68,9 @@ def create_RRT(grid, x_init, x_goal, num_vertices, dt):
     for _ in range(num_vertices):
         maxiter += 1
 
-        if np.random.randint(0,100) < 5:
+        # Add a biais toward the goal, in order to converge
+        # rapidely
+        if np.random.randint(0,100) < 10:
             x_rand = x_goal
         else:
             x_rand = sample_state(grid)
@@ -82,11 +87,13 @@ def create_RRT(grid, x_init, x_goal, num_vertices, dt):
                 # the orientation `u` will be added as metadata to
                 # the edge
                 rrt.add_edge(x_near, x_new, u)
-                if LA.norm(np.array(x_new) - np.array(x_goal)) < 5:
-                    found = True
-                    print("\tPath found!")
-                    break
-    if not found:
+                if pathlookup:
+                    if LA.norm(np.array(x_new) - np.array(x_goal)) < dt:
+                        found = True
+                        print("\tPath found!")
+                        break
+
+    if pathlookup and not found:
         rrt = None
 
     return rrt, maxiter, x_init, x_new
