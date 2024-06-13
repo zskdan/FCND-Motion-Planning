@@ -314,6 +314,9 @@ class MotionPlanning(Drone):
         # path not correct
         #grid_goal = (908, 32)  #S(876, 882) #G(908, 32)
 
+        # too long processing for rrt (312s!!)
+        #grid_goal = (394, 167) #S (897, 643) (394, 167)
+
         goal  = self.grid_to_local(grid_goal)
         print('\tLocal Start and Goal: ', start, goal)
         print('\tGrid Start and Goal: ', grid_start, grid_goal)
