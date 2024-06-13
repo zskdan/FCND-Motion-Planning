@@ -3,6 +3,7 @@ import argparse
 import time
 import msgpack
 from enum import Enum, auto
+from threading import Thread
 
 import numpy as np
 import numpy.linalg as LA
@@ -39,9 +40,12 @@ class MotionPlanning(Drone):
         self.check_state = {}
 
         self.grid = None
+        self.obsdata = None
         self.grid_offsets = np.array([0, 0, 0])
         self.obspoints = None
         self.safety_distance = 0
+        self.planned = False
+
 
         # initial state
         self.flight_state = States.MANUAL
@@ -89,7 +93,8 @@ class MotionPlanning(Drone):
                 if self.armed:
                     self.plan_path()
             elif self.flight_state == States.PLANNING:
-                self.takeoff_transition()
+                if self.planned:
+                    self.takeoff_transition()
             elif self.flight_state == States.DISARMING:
                 if ~self.armed & ~self.guided:
                     self.manual_transition()
@@ -265,11 +270,11 @@ class MotionPlanning(Drone):
               .format(self.global_home, self.global_position, self.local_position))
         print('Loading obstacle map grid ... ')
         # Read in obstacle map
-        data = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
+        self.obsdata = np.loadtxt('colliders.csv', delimiter=',', dtype='Float64', skiprows=2)
 
         # Define a grid for a particular altitude and safety margin around obstacles
         self.grid, self.obspoints, north_offset, east_offset = \
-                create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+                create_grid(self.obsdata, TARGET_ALTITUDE, SAFETY_DISTANCE)
         self.grid_offsets = np.array([north_offset, east_offset, TARGET_ALTITUDE])
         print("\tNorth offset = {0}, east offset = {1}"
               .format(self.grid_offsets[0], self.grid_offsets[1]))
@@ -309,17 +314,24 @@ class MotionPlanning(Drone):
         gridisp.put(self.grid)
         gridisp.put(grid_start)
         gridisp.put(grid_goal)
+        time.sleep(1)
 
+        # Start the planning process in a separate thread, to not block
+        # the current function call, otherwise the server will shutdown the
+        # tcp connection on a 30 seconds timeout.
+        t = Thread(target=self.plan_worker, args=[grid_start, grid_goal])
+        t.start()
+
+    def plan_worker(self, grid_start, grid_goal):
         print("Searching for a path ...")
         path = self.myplan(grid_start, grid_goal)
 
         while not path:
-            TARGET_ALTITUDE += 10
-            self.target_position[2] = TARGET_ALTITUDE
-            self.grid_offsets[2] = TARGET_ALTITUDE
-            print("Retry generating the grid at altitude:", TARGET_ALTITUDE)
+            self.target_position[2] += 10
+            self.grid_offsets[2] = self.target_position[2]
+            print("Retry generating the grid at altitude:", self.target_position[2])
             self.grid, self.obspoints, north_offset, east_offset = \
-                create_grid(data, TARGET_ALTITUDE, SAFETY_DISTANCE)
+                create_grid(self.obsdata, self.target_position[2] , self.safety_distance)
             path = self.myplan(grid_start, grid_goal)
 
         gridisp.put(path)
@@ -329,8 +341,11 @@ class MotionPlanning(Drone):
 
         # Set self.waypoints
         self.waypoints = waypoints
-        # TODO: send waypoints to sim (this is just for visualization of waypoints)
+        # Send waypoints to sim (this is just for visualization of waypoints)
         self.send_waypoints()
+
+        # Finaly mark the planned tag in order to proceed to next transition.
+        self.planned = True
 
     def start(self):
         self.start_log("Logs", "NavLog.txt")
@@ -350,8 +365,9 @@ if __name__ == "__main__":
     parser.add_argument('--host', type=str, default='127.0.0.1', help="host address, i.e. '127.0.0.1'")
     args = parser.parse_args()
 
-    # Change the timeout to an arbitrary high value in order to avoid hanging
-    # the connection in case of planning algorithm that may take long time.
+    # Change the client timeout to an arbitrary high value in order to avoid
+    # hanging the connection in case of planning algorithm that may take long
+    # time.
     conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=600)
     drone = MotionPlanning(conn)
     time.sleep(1)
