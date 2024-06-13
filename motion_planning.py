@@ -225,9 +225,9 @@ class MotionPlanning(Drone):
         #print("generate path after {} iteration".format(iteration))
         if rrt:
             path = nx.shortest_path(rrt.tree, source=snode, target=gnode)
+            path = prune_path(path, self.grid)
             if snode != goal:
                 path.append(goal)
-            path = prune_path(path, self.grid)
 
         return path
 
