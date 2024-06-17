@@ -152,30 +152,24 @@ class MotionPlanning(Drone):
         data = msgpack.dumps(self.waypoints)
         self.connection._master.write(data)
 
-    # Graph + A_star planning algorithm.
+    # Voronoi Graph + A_star planning algorithm.
     def myplan_graph(self, start, goal):
-        print("\tUsing Graph A_star algorithm")
+        print("\tUsing Voronoi Graph A_star algorithm")
         # Create graph from the grid and obstacle points.
-        edges = create_edges(self.grid, self.obspoints)
-        G = nx.Graph()
-        for e in edges:
-            p1 = e[0]
-            p2 = e[1]
-            dist = LA.norm(np.array(p2) - np.array(p1))
-            G.add_edge(p1, p2, weight=dist)
+        VG = create_voronoi_graph(self.grid, self.obspoints)
 
         # Looking for closest points of start and goal in graph.
-        skel_start = closest_point(G, start)
-        skel_goal  = closest_point(G, goal)
+        skel_start = closest_point(VG, start)
+        skel_goal  = closest_point(VG, goal)
 
         if np.linalg.norm(np.array(skel_start) - np.array(skel_goal)) < 0.1:
             # Return a direct path (not null), if goal and start points are too closed.
             path = [start, goal]
         else :
             # Run the a_star algorithm to find a path.
-            path, cost = a_star_graph(G, heuristic, skel_start, skel_goal)
+            path, cost = a_star_graph(VG, heuristic, skel_start, skel_goal)
             if path:
-                # Insert start and goal points to the path, as the path is using the closest_points.
+                # Insert start and goal points to the path, as the path is using the closest_point.
                 path.insert(0, start)
                 path.append(goal)
                 # Prune the path to only few 2 by 2 coolinear waypoints.
@@ -183,32 +177,40 @@ class MotionPlanning(Drone):
 
         return path
 
+    # WARNING: this may take very long time to process: (>1300 seconds)
     def myplan_pr(self, start, goal):
         print("\tUsing Probabilistic Roadmap algorithm")
-        sampler = Sampler(self.self.obsdata)
-        print("here1")
+        sampler = Sampler(self.obsdata)
         polygons = sampler._polygons
-        print("here2")
         nodes = sampler.sample(300)
-        print("here3")
 
+        # Create graph.
         graph = create_graph(nodes, 5, polygons)
-        start = list(graph.nodes)[0]
-        k = np.random.randint(len(graph.nodes))
-        print(k, len(graph.nodes))
-        goal = list(graph.nodes)[k]
+        start3d = start + (self.grid_offsets[2],)
+        goal3d  = goal  + (self.grid_offsets[2],)
+
+        # Looking for closest points of start and goal in graph.
+        skel_start = closest_point(graph, start3d)
+        skel_goal  = closest_point(graph, goal3d)
 
         # Run A* to find a path from start to goal
-        print('Local Start and Goal: ', start, goal)
-        path, _ = a_star_graph(graph, heuristic, start, goal)
-        path.insert(0, start)
-        path.append(goal)
+        if np.linalg.norm(np.array(skel_start) - np.array(skel_goal)) < 0.1:
+            # Return a direct path (not null), if goal and start points are too closed.
+            path = [start3d, goal3d]
+        else :
+            path, _ = a_star_graph(graph, heuristic, skel_start, skel_goal)
+            if path:
+                # Insert start and goal points to the path, as the path is using the closest_point.
+                #path.insert(0, start3d)
+                #path.append(goal3d)
+                # Prune the path to only few 2 by 2 coolinear waypoints.
+                path = prune_path(path, self.grid)
 
         return path
 
+
     # Planning algorithm which apply directly A_star to the grid.
-    # WARNING: this may take long time to process, which may exceed the
-    # Mavlink connection timeout.
+    # WARNING: this may take long time to process
     def myplan_grid(self, start, goal):
         print("\tUsing Grid A_star algorithm")
         path, _ = a_star_grid(self.grid, heuristic, start, goal)
@@ -239,10 +241,18 @@ class MotionPlanning(Drone):
             # close.
             path = [start, goal]
         else:
+            # Choose one of the following planning algorithm:
+            # 1. A* star algorithm applied to the grid.
             #path = self.myplan_grid(start, goal)
-            #path = self.myplan_pr(start, goal)
+
+            # 2. Probabilistic Roadmap algorithm.
+            path = self.myplan_pr(start, goal)
+
+            # 3. A* star algorithm applied to a graph.
             #path = self.myplan_graph(start, goal)
-            path = self.myplan_rrt(start, goal)
+
+            # 4. RRT algorithm.
+            #path = self.myplan_rrt(start, goal)
 
         time_taken = time.time() - t0
         print("\t",len(path), path)
@@ -346,12 +356,12 @@ class MotionPlanning(Drone):
 
         gridisp.put(path)
 
-        # Convert path to waypoints
+        # Convert path to waypoints.
         waypoints = [tuple(map(int, self.grid_to_local(p))) + tuple([0]) for p in path]
 
-        # Set self.waypoints
+        # Set self.waypoints.
         self.waypoints = waypoints
-        # Send waypoints to sim (this is just for visualization of waypoints)
+        # Send waypoints to sim (this is just for visualization of waypoints).
         self.send_waypoints()
 
         # Finaly mark the planned tag in order to proceed to next transition.

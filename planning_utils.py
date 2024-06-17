@@ -57,9 +57,6 @@ def new_state(x_near, u, dt):
     y = x_near[1] + np.sin(u)*dt
     return (x, y)
 
-def create_RRT(grid, x_init, x_goal, num_vertices, dt):
-    return generate_RRT(grid, x_init, x_goal, num_vertices, dt, pathlookup=True)
-
 def generate_RRT(grid, x_init, x_goal, num_vertices, dt, pathlookup=False):
     rrt = RRT(x_init)
 
@@ -97,6 +94,9 @@ def generate_RRT(grid, x_init, x_goal, num_vertices, dt, pathlookup=False):
         rrt = None
 
     return rrt, maxiter, x_init, x_new
+
+def create_RRT(grid, x_init, x_goal, num_vertices, dt):
+    return generate_RRT(grid, x_init, x_goal, num_vertices, dt, pathlookup=True)
 
 def create_grid(data, drone_altitude, safety_distance):
     """
@@ -141,7 +141,7 @@ def create_grid(data, drone_altitude, safety_distance):
 
     return grid, points, int(north_min), int(east_min)
 
-def create_edges(grid, points):
+def create_voronoi_graph(grid, points):
     """
     Returns Voronoi graph edges given obstacle data and the
     drone's altitude.
@@ -176,7 +176,15 @@ def create_edges(grid, points):
             p2 = (p2[0], p2[1])
             edges.append((p1, p2))
 
-    return edges
+    VG = nx.Graph()
+    for e in edges:
+       p1 = e[0]
+       p2 = e[1]
+       dist = LA.norm(np.array(p2) - np.array(p1))
+       VG.add_edge(p1, p2, weight=dist)
+
+    return VG
+
 
 
 # Assume all actions cost the same.
@@ -239,7 +247,6 @@ def valid_actions(grid, current_node):
 
     return valid_actions
 
-
 def point(p):
     return np.array([p[0], p[1], 1.]).reshape(1, -1)
 
@@ -247,33 +254,6 @@ def collinearity_check(p1, p2, p3, epsilon=1e-6):
     m = np.concatenate((p1, p2, p3), 0)
     det = np.linalg.det(m)
     return abs(det) < epsilon
-
-def prune_path_sol(path):
-    pruned_path = [p for p in path]
-    # TODO: prune the path!
-
-    i = 0
-    while i < len(pruned_path) - 2:
-        p1 = point(pruned_path[i])
-        p2 = point(pruned_path[i+1])
-        p3 = point(pruned_path[i+2])
-
-        # If the 3 points are in a line remove
-        # the 2nd point.
-        # The 3rd point now becomes and 2nd point
-        # and the check is redone with a new third point
-        # on the next iteration.
-        if collinearity_check(p1, p2, p3):
-            # Something subtle here but we can mutate
-            # `pruned_path` freely because the length
-            # of the list is check on every iteration.
-            pruned_path.remove(pruned_path[i+1])
-        else:
-            i += 1
-
-    print("prune path from {} to {} ".format(len(path), len(pruned_path)))
-
-    return pruned_path
 
 def collision_check(grid, p1, p2):
     cells = list(bresenham(int(p1[0]), int(p1[1]), int(p2[0]), int(p2[1])))
@@ -371,57 +351,6 @@ def create_graph(nodes, k, polygons):
             if can_connect(n1, n2, polygons):
                 g.add_edge(n1, n2, weight=1)
     return g
-
-def a_star_graph_sol(graph, h, start, goal):
-    """Modified A* to work with NetworkX graphs."""
-
-    path = []
-    path_cost = 0
-    queue = PriorityQueue()
-    queue.put((0, start))
-    visited = set(start)
-
-    branch = {}
-    found = False
-
-    while not queue.empty():
-        item = queue.get()
-        current_node = item[1]
-        if current_node == start:
-            current_cost = 0.0
-        else:
-            current_cost = branch[current_node][0]
-
-        if current_node == goal:
-            print('\tFound a path.')
-            found = True
-            break
-        else:
-            for next_node in graph[current_node]:
-                cost = graph.edges[current_node, next_node]['weight']
-                branch_cost = current_cost + cost
-                queue_cost = branch_cost + h(next_node, goal)
-
-                if next_node not in visited:
-                    visited.add(next_node)
-                    branch[next_node] = (branch_cost, current_node)
-                    queue.put((queue_cost, next_node))
-
-    if found:
-        # retrace steps
-        n = goal
-        path_cost = branch[n][0]
-        path.append(goal)
-        while branch[n][1] != start:
-            path.append(branch[n][1])
-            n = branch[n][1]
-        path.append(branch[n][1])
-    else:
-        print('**********************')
-        print('Failed to find a path!')
-        print('**********************')
-    return path[::-1], path_cost
-
 
 def a_star_graph(graph, heuristic, start, goal):
     """Modified A* to work with NetworkX graphs."""
@@ -521,6 +450,6 @@ def a_star_grid(grid, h, start, goal):
     return path[::-1], path_cost
 
 
-def heuristic(position, goal_position):
-    return np.linalg.norm(np.array(position) - np.array(goal_position))
+def heuristic(p1, p2):
+    return np.linalg.norm(np.array(p1) - np.array(p2))
 
