@@ -316,8 +316,8 @@ def prune_path2(path):
 
 def can_connect(n1, n2, polygons):
     l = LineString([n1, n2])
-    for p in polygons:
-        if p.crosses(l) and p.height >= min(n1[2], n2[2]):
+    for p, h in polygons:
+        if l.crosses(p) and h >= min(n1[2], n2[2]):
             return False
 
     return True

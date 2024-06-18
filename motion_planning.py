@@ -31,7 +31,7 @@ class States(Enum):
 
 class MotionPlanning(Drone):
 
-    def __init__(self, connection):
+    def __init__(self, connection, global_goal=None):
         super().__init__(connection)
 
         self.target_position = np.array([0.0, 0.0, 0.0])
@@ -46,6 +46,11 @@ class MotionPlanning(Drone):
         self.safety_distance = 0
         self.planned = False
 
+        try:
+            match = re.search('(-?\d+\.\d+), (-?\d+\.\d+), (-?\d+\.\d+)', global_goal)
+            self.global_goal = (float(match[1]), float(match[2]), float(match[3]))
+        except:
+            self.global_goal = None
 
         # initial state
         self.flight_state = States.MANUAL
@@ -299,35 +304,43 @@ class MotionPlanning(Drone):
         start = (int(current_position[0]), int(current_position[1]), 0)
         grid_start = self.local_to_grid(start)
 
-        maxn, maxe = self.grid.shape
-        while True:
-            n = np.random.randint(maxn)
-            e = np.random.randint(maxe)
-            if self.grid[n, e] == False:
-                grid_goal = (n, e)
-                break
+        # generate a goal randomely if not provided as argument
+        if not self.global_goal:
+            print("\tCannot parse global goal, geneate it randomely!")
+            maxn, maxe = self.grid.shape
+            while True:
+                n = np.random.randint(maxn)
+                e = np.random.randint(maxe)
+                if self.grid[n, e] == False:
+                    grid_goal = (n, e)
+                    break
+            #FIXME: path not found (start is default center)
+            #goal = (159, 3)
+            #goal = (596, -90)
+            #goal = (269, 296)
 
-        #FIXME: path not found (start is default center)
-        #goal = (159, 3)
-        #goal = (596, -90)
-        #goal = (269, 296)
+            #FIXME: path KeyError
+            #grid_path = (880, 611) #start: (839, 564)
 
-        #FIXME: path KeyError
-        #grid_path = (880, 611) #start: (839, 564)
+            #FIXME: bug on prune
+            #grid_goal = (626, 3)
 
-        #FIXME: bug on prune
-        #grid_goal = (626, 3)
+            #FIXME: safety distance not respected.
+            #grid_goal = (115, 264) #start: (281, 473)
 
-        #FIXME: safety distance not respected.
-        #grid_goal = (115, 264) #start: (281, 473)
+            # path not correct
+            #grid_goal = (908, 32)  #S(876, 882) #G(908, 32)
 
-        # path not correct
-        #grid_goal = (908, 32)  #S(876, 882) #G(908, 32)
+            # too long processing for rrt (312s!!)
+            #grid_goal = (394, 167) #S (897, 643) (394, 167)
+            #grid_goal = (481, 520)
+            goal  = self.grid_to_local(grid_goal)
+        else:
+            print("\tglobal_goal:",self.global_goal)
+            goal = global_to_local(self.global_goal, self.global_home)
+            grid_goal  = self.local_to_grid(goal)
 
-        # too long processing for rrt (312s!!)
-        #grid_goal = (394, 167) #S (897, 643) (394, 167)
 
-        goal  = self.grid_to_local(grid_goal)
         print('\tLocal Start and Goal: ', start, goal)
         print('\tGrid Start and Goal: ', grid_start, grid_goal)
 
@@ -381,15 +394,16 @@ class MotionPlanning(Drone):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--port', type=int, default=5760, help='Port number')
     parser.add_argument('--host', type=str, default='127.0.0.1', help="host address, i.e. '127.0.0.1'")
+    parser.add_argument('--port', type=int, default=5760, help='Port number')
+    parser.add_argument('--goal', type=str, default=None, help="Global goal location, i.e. '-122.397970, 37.795090, 26.190'")
     args = parser.parse_args()
 
     # Change the client timeout to an arbitrary high value in order to avoid
     # hanging the connection in case of planning algorithm that may take long
     # time.
     conn = MavlinkConnection('tcp:{0}:{1}'.format(args.host, args.port), timeout=600)
-    drone = MotionPlanning(conn)
+    drone = MotionPlanning(conn, global_goal=args.goal)
     time.sleep(1)
 
     drone.start()
