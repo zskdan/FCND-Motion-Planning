@@ -45,6 +45,9 @@ class MotionPlanning(Drone):
         self.obspoints = None
         self.safety_distance = 0
         self.planned = False
+        self.local3d = False
+        self.localpath = {}
+        self.localinit = False
 
         try:
             match = re.search('(-?\d+\.\d+), (-?\d+\.\d+), (-?\d+\.\d+)', global_goal)
@@ -68,15 +71,42 @@ class MotionPlanning(Drone):
         elif self.flight_state == States.WAYPOINT:
             gridisp.put(self.local_to_grid(self.local_position))
             deadband = 2 * self.safety_distance
-            if len(self.waypoints) == 0:
+            if len(self.waypoints) == 0 or self.local3d == True:
                 deadband = 0.1
 
             if np.linalg.norm(self.target_position[0:2] - self.local_position[0:2]) < deadband:
-                if len(self.waypoints) > 0:
-                    self.waypoint_transition()
+                if len(self.waypoints) > 0 or len(self.localpath) > 0:
+                    self.local_plan()
                 else:
                     if np.linalg.norm(self.local_velocity[0:2]) < 1.0:
                         self.landing_transition()
+
+    def local_plan(self):
+        if self.local3d == True:
+            if len(self.localpath) > 0:
+                self.localpoint_transition()
+                return
+            else:
+                print("local replanning")
+                cube = (20,20,10)
+                # skip first call
+                if self.localinit == True:
+                    voxmap, self.graph  = create_local_voxmap(self.obsdata, self.local_position, cube)
+                    next_localpoint = get_edge(self.local_position, self.nextwaypoint, cube)
+                    if next_localpoint:
+                        local_start = closest_point(self.graph,
+                                   (int(self.local_position[0]),
+                                    int(self.local_position[1]),
+                                   -int(self.local_position[2])))
+                        local_goal = closest_point(self.graph, next_localpoint)
+                        self.localpath, _ = a_star_graph(self.graph, heuristic, local_start, local_goal)
+                        prune_path2(self.localpath)
+                        return
+                self.localinit = True
+
+        # transit to new waypoint if local3d algorithm is not inuse or if
+        # no more next_localpoint.
+        self.waypoint_transition()
 
     def isHovering(self):
         return (abs(self.local_velocity[0]) < 0.01 and \
@@ -115,14 +145,25 @@ class MotionPlanning(Drone):
         print("takeoff transition")
         self.takeoff(self.target_position[2])
 
-    def waypoint_transition(self):
-        self.flight_state = States.WAYPOINT
-        print("waypoint transition")
-        self.target_position = self.waypoints.pop(0)
+    def localpoint_transition(self):
+        localpoint = self.localpath.pop(0)
+        self.goto_target(localpoint)
+
+    def goto_target(self, position):
+        self.target_position = position
         print('\ttarget position', self.target_position)
         heading = np.arctan2(self.target_position[1] - self.local_position[1],
                              self.target_position[0] - self.local_position[0])
         self.cmd_position(self.target_position[0], self.target_position[1], self.target_position[2], heading)
+
+    def waypoint_transition(self):
+        self.flight_state = States.WAYPOINT
+        print("waypoint transition")
+        self.nextwaypoint = self.waypoints.pop(0)
+        if self.local3d == True:
+            self.local_plan()
+        else:
+             self.goto_target(self.nextwaypoint)
 
     def landing_transition(self):
         self.flight_state = States.LANDING
@@ -213,6 +254,13 @@ class MotionPlanning(Drone):
 
         return path
 
+    def myplan_rh(self, start, goal):
+        print("\tUsing Receding Horizon algorithm")
+        self.local3d = True
+        path, _ = a_star_grid(self.grid, heuristic, start, goal)
+        if path:
+           path = prune_path(path, self.grid)
+        return path
 
     # Planning algorithm which apply directly A_star to the grid.
     # WARNING: this may take long time to process
@@ -251,13 +299,16 @@ class MotionPlanning(Drone):
             #path = self.myplan_grid(start, goal)
 
             # 2. Probabilistic Roadmap algorithm.
-            path = self.myplan_pr(start, goal)
+            #path = self.myplan_pr(start, goal)
 
             # 3. A* star algorithm applied to a graph.
             #path = self.myplan_graph(start, goal)
 
             # 4. RRT algorithm.
-            #path = self.myplan_rrt(start, goal)
+            path = self.myplan_rrt(start, goal)
+
+            # 5. Receding Horizon algorithm.
+            #path = self.myplan_rh(start, goal)
 
         time_taken = time.time() - t0
         print("\t",len(path), path)
@@ -267,7 +318,7 @@ class MotionPlanning(Drone):
 
     def plan_path(self):
         self.flight_state = States.PLANNING
-        TARGET_ALTITUDE = 5
+        TARGET_ALTITUDE = 15
         SAFETY_DISTANCE = 5
 
         self.safety_distance    = SAFETY_DISTANCE

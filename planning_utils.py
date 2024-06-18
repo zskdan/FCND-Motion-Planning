@@ -185,6 +185,83 @@ def create_voronoi_graph(grid, points):
 
     return VG
 
+def create_local_voxmap(data, center, cube):
+    """
+    Returns a grid representation of a 3D configuration space
+    based on given obstacle data.
+    """
+    north_min = np.floor(np.min(data[:, 0] - data[:, 3]))
+    north_max = np.ceil(np.max(data[:, 0] + data[:, 3]))
+    east_min  = np.floor(np.min(data[:, 1] - data[:, 4]))
+    east_max  = np.ceil(np.max(data[:, 1] + data[:, 4]))
+    alt_min   = 0
+    alt_max   = np.ceil(np.max(data[:, 2] + data[:, 5]))
+
+    # minimum and maximum north coordinates
+    north_local_min = np.clip(center[0]-(cube[0]//2), north_min, north_max)
+    north_local_max = np.clip(center[0]+(cube[0]//2), north_min, north_max)
+
+    # minimum and maximum east coordinates
+    east_local_min = np.clip(center[1]-(cube[1]//2), east_min, east_max)
+    east_local_max = np.clip(center[1]+(cube[1]//2), east_min, east_max)
+
+    alt_local_min = np.clip(-center[2]-(cube[2]//2), alt_min, alt_max)
+    alt_local_max = np.clip(-center[2]+(cube[2]//2), alt_min, alt_max)
+
+    #print("max: ", north_max, east_max, alt_max)
+    #print("min: ", north_min, east_min, alt_min)
+
+    #print("local max: ", north_local_max, east_local_max, alt_local_max)
+    #print("local min: ", north_local_min, east_local_min, alt_local_min)
+
+    num_samples = 50
+    nvals = np.random.uniform(north_local_min, north_local_max, num_samples).astype(int)
+    evals = np.random.uniform(east_local_min, east_local_max, num_samples).astype(int)
+    avals = np.random.uniform(alt_local_min, alt_local_max, num_samples).astype(int)
+    samples = list(zip(nvals, evals, avals))
+    tree = KDTree(samples)
+    to_keep = samples.copy()
+
+    # given the minimum and maximum coordinates we can
+    # calculate the size of the grid.
+    north_size = cube[0]
+    east_size =  cube[1]
+    alt_size =   cube[2]
+    polygones = []
+    voxmap = np.zeros((north_size, east_size, alt_size), dtype=np.bool)
+    for i in range(data.shape[0]):
+        north, east, alt, d_north, d_east, d_alt = data[i, :]
+        #if (north+d_north < north_local_max and north-d_north > north_local_min) and \
+        #   (east+d_east   < east_local_max  and east-d_east   > east_local_min):# and \
+           #(alt-d_alt) > alt_local_min:
+        #if (north-d_north > north_local_min and north-d_north > north_local_min)
+        #    print("obstacle n:", north - d_north - north_min, north + d_north-north_min)
+        #    print("obstacle e:", east - d_east - east_min, east + d_east - east_min)
+        if True:
+            obstacle = [
+                int(np.clip(north - d_north - north_local_min, 0, north_size-1)),
+                int(np.clip(north + d_north - north_local_min, 0, north_size-1)),
+                int(np.clip(east - d_east - east_local_min, 0, east_size-1)),
+                int(np.clip(east + d_east - east_local_min, 0, east_size-1))
+            ]
+            maxradius = max(d_north, d_east, d_alt)
+            corners = [(obstacle[0], obstacle[2]), (obstacle[0], obstacle[3]), (obstacle[1], obstacle[3]), (obstacle[1], obstacle[2])]
+            #height = int(alt+d_alt)
+            height = int(np.clip(alt + d_alt, 0, alt_size-1))
+            voxmap[obstacle[0]:obstacle[1], obstacle[2]:obstacle[3], 0:height] = True
+            p = Polygon(corners)
+            for idx in tree.query_radius([(north, east, alt)], maxradius, return_distance=False)[0]:
+                pnt = samples[idx]
+                if pnt in to_keep and p.contains(Point(pnt[0], pnt[1])) and pnt[2]<=height:
+                    to_keep.remove(pnt)
+                else:
+                    polygones.append((p,height))
+        # TODO: fill in the voxels that are part of an obstacle with `True`
+        #
+        # i.e. grid[0:5, 20:26, 2:7] = True
+    graph = create_graph(to_keep, 5, polygones)
+
+    return voxmap, graph
 
 
 # Assume all actions cost the same.
@@ -270,6 +347,14 @@ def collision_check(grid, p1, p2):
             break
 
     return hit
+
+def get_edge(pt, npt, cube):
+    #TODO add support of 3d edges
+    cells = list(bresenham(int(pt[0]), int(pt[1]), int(npt[0]), int(npt[1])))
+    for c in cells:
+        if c[0] == int(pt[0])-cube[0] or c[0] == int(pt[0])+cube[0] or \
+           c[1] == int(pt[1])-cube[1] or c[1] == int(pt[1])+cube[1]: 
+            return (c[0], c[1], npt[2])
 
 # Prune the path in both directions
 def prune_path(path, grid):
@@ -370,10 +455,7 @@ def a_star_graph(graph, heuristic, start, goal):
         current_cost = item[0]
         current_node = item[1]
 
-        if current_node == goal:
-            found = True
-            break
-        else:
+        if current_node != goal:
             for next_node in graph[current_node]:
                 cost = graph.edges[current_node, next_node]['weight']
                 new_cost = current_cost + cost + heuristic(next_node, goal)
@@ -383,6 +465,9 @@ def a_star_graph(graph, heuristic, start, goal):
                     queue.put((new_cost, next_node))
 
                     branch[next_node] = (new_cost, current_node)
+        else:
+            found = True
+            break
 
     if found and branch:
         # retrace steps
