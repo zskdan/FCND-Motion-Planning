@@ -88,7 +88,7 @@ class MotionPlanning(Drone):
                 return
             else:
                 print("local replanning")
-                cube = (20,20,10)
+                cube = (40,40,10)
                 # skip first call
                 if self.localinit == True:
                     voxmap, self.graph  = create_local_voxmap(self.obsdata, self.local_position, cube)
@@ -269,6 +269,7 @@ class MotionPlanning(Drone):
         path, _ = a_star_grid(self.grid, heuristic, start, goal)
         return prune_path(path, self.grid)
 
+
     # RRT planning algorithm.
     def myplan_rrt(self, start, goal):
         print("\tUsing RRT algorithm")
@@ -298,17 +299,17 @@ class MotionPlanning(Drone):
             # 1. A* star algorithm applied to the grid.
             #path = self.myplan_grid(start, goal)
 
-            # 2. Probabilistic Roadmap algorithm.
-            #path = self.myplan_pr(start, goal)
-
-            # 3. A* star algorithm applied to a graph.
+            # 2. A* star algorithm applied to a graph.
             #path = self.myplan_graph(start, goal)
 
-            # 4. RRT algorithm.
-            path = self.myplan_rrt(start, goal)
+            # 3. Probabilistic Roadmap algorithm.
+            #path = self.myplan_pr(start, goal)
 
-            # 5. Receding Horizon algorithm.
+            # 4. Receding Horizon algorithm.
             #path = self.myplan_rh(start, goal)
+
+            # 5. RRT algorithm.
+            path = self.myplan_rrt(start, goal)
 
         time_taken = time.time() - t0
         print("\t",len(path), path)
@@ -355,9 +356,9 @@ class MotionPlanning(Drone):
         start = (int(current_position[0]), int(current_position[1]), 0)
         grid_start = self.local_to_grid(start)
 
-        # generate a goal randomely if not provided as argument
+        # generate a goal randomly if not provided as argument
         if not self.global_goal:
-            print("\tCannot parse global goal, geneate it randomely!")
+            print("\tCannot parse global goal, generate it randomly!")
             maxn, maxe = self.grid.shape
             while True:
                 n = np.random.randint(maxn)
@@ -365,32 +366,14 @@ class MotionPlanning(Drone):
                 if self.grid[n, e] == False:
                     grid_goal = (n, e)
                     break
-            #FIXME: path not found (start is default center)
-            #goal = (159, 3)
-            #goal = (596, -90)
-            #goal = (269, 296)
 
-            #FIXME: path KeyError
-            #grid_path = (880, 611) #start: (839, 564)
-
-            #FIXME: bug on prune
-            #grid_goal = (626, 3)
-
-            #FIXME: safety distance not respected.
-            #grid_goal = (115, 264) #start: (281, 473)
-
-            # path not correct
-            #grid_goal = (908, 32)  #S(876, 882) #G(908, 32)
-
-            # too long processing for rrt (312s!!)
-            #grid_goal = (394, 167) #S (897, 643) (394, 167)
-            #grid_goal = (481, 520)
             goal  = self.grid_to_local(grid_goal)
         else:
             print("\tglobal_goal:",self.global_goal)
             goal = global_to_local(self.global_goal, self.global_home)
             grid_goal  = self.local_to_grid(goal)
 
+        #grid_goal = (grid_start[0]+10, grid_start[1]+10)
 
         print('\tLocal Start and Goal: ', start, goal)
         print('\tGrid Start and Goal: ', grid_start, grid_goal)

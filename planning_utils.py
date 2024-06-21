@@ -155,22 +155,9 @@ def create_voronoi_graph(grid, points):
         p1 = graph.vertices[v[0]]
         p2 = graph.vertices[v[1]]
 
-        cells = list(bresenham(int(p1[0]), int(p1[1]), int(p2[0]), int(p2[1])))
-        hit = False
-
-        for c in cells:
-            # First check if we're off the map
-            if np.amin(c) < 0 or c[0] >= grid.shape[0] or c[1] >= grid.shape[1]:
-                hit = True
-                break
-            # Next check if we're in collision
-            if grid[c[0], c[1]] == 1:
-                hit = True
-                break
-
         # If the edge does not hit on obstacle
         # add it to the list
-        if not hit:
+        if not collision_check(grid, p1, p2):
             # array to tuple for future graph creation step)
             p1 = (p1[0], p1[1])
             p2 = (p2[0], p2[1])
